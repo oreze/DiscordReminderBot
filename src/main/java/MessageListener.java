@@ -18,7 +18,7 @@ public class MessageListener extends ListenerAdapter {
     public static void main(String[] args) throws LoginException {
         //TODO !help command
         //TODO save remind requests to file
-        JDA api = JDABuilder.createDefault("NzEwNjcyODMyNzQwNDU4NTU4.XtWqvA.hRhmJMS9i3ogwlh-X-nN04Zk8rQ").build();
+        JDA api = JDABuilder.createDefault("token").build();
         api.addEventListener(new Hello());
         api.addEventListener(new Message());
         api.addEventListener(new PingPong());
