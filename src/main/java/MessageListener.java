@@ -12,7 +12,7 @@ public class MessageListener extends ListenerAdapter {
     public static void main(String[] args) throws LoginException {
         //TODO !help command
         //TODO save remind requests to file
-        JDA api = JDABuilder.createDefault("NzEwNjcyODMyNzQwNDU4NTU4.Xt4B-w.SnN4q5GrC_Ac1XbMFSjsrpsHQIk").build();
+        JDA api = JDABuilder.createDefault("NzEwNjcyODMyNzQwNDU4NTU4.Xt5STQ.irZIFy7XZiTpq-ATNkgmlAyVAPE").build();
         api.addEventListener(new Hello());
         api.addEventListener(new Message());
         api.addEventListener(new PingPong());
