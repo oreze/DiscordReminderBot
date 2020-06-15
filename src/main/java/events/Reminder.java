@@ -6,20 +6,24 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 
 import javax.annotation.Nonnull;
 import java.io.*;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Reminder extends ListenerAdapter {
     public static ArrayList<ArrayList<String>> reminders;
-    DateTimeFormatter dateFormat;
-    File container;
+    public static File container;
+    private static long messageId;
+    private final DateTimeFormatter dateFormat;
 
     public Reminder(String containerPath) {
-        reminders = new ArrayList<ArrayList<String>>();
+        reminders = new ArrayList<>();
         dateFormat = DateTimeFormatter.ofPattern("HH:mm dd-MM-yyyy");
         container = new File(containerPath);
     }
@@ -51,12 +55,14 @@ public class Reminder extends ListenerAdapter {
             printReminders(event);
         }
         else if (deleteCommandMatcher.matches()) {
-            deleteReminder(event);
+            String[] splittedMessage = event.getMessage().getContentRaw().split(" ");
+            deleteReminder(event, splittedMessage[1]);          //pass message id to the function
         }
     }
 
     private void saveReminderToArray(@Nonnull GuildMessageReceivedEvent event, String[] splitMessage) {
-        ArrayList<String> reminder = new ArrayList<String>();
+        ArrayList<String> reminder = new ArrayList<>();
+        reminder.add(String.valueOf(messageId));        //add message ID
         reminder.add(event.getAuthor().getId());        //add author
         reminder.add(splitMessage[1]);                  //add message
         reminder.add(splitMessage[2]);                  //add date to reminder
@@ -74,8 +80,9 @@ public class Reminder extends ListenerAdapter {
             if (localTimeInput.isAfter(localTimeNow)) {
                 saveReminderToArray(event, splittedMessage);
                 saveToFile(event, splittedMessage);
-                String personalisedMessage = "<@" + event.getAuthor().getId() + "> reminder has been set \"" + splittedMessage[1] + "\" for \"" + splittedMessage[2] + "\".";
+                String personalisedMessage = "<@" + event.getAuthor().getId() + "> reminder no. " + messageId + " has been set, content:\"" + splittedMessage[1] + "\", date: \"" + splittedMessage[2] + "\".";
                 event.getChannel().sendMessage(personalisedMessage).queue();
+                messageId++;
             }
             else {
                 event.getChannel().sendMessage("You can`t set the date that has passed in the reminder").queue();
@@ -90,15 +97,14 @@ public class Reminder extends ListenerAdapter {
         String authorId = event.getAuthor().getId();
         int numberOfReminder = 0;
 
-        for (int i = 0, j = 1; i < reminders.size(); i++) {
-            if (reminders.get(i).get(0).equals(authorId)) {
+        for (ArrayList<String> reminder : reminders) {
+            if (reminder.get(1).equals(authorId)) {
                 numberOfReminder++;
                 if (numberOfReminder == 1) {
                     event.getChannel().sendMessage("<@" + authorId + "> your reminders:").queue();
                 }
 
-                event.getChannel().sendMessage("ID: " + j + ", date: " + reminders.get(i).get(2) + ", content: \"" + reminders.get(i).get(1) + "\"").queue();
-                j++;
+                event.getChannel().sendMessage("ID: " + reminder.get(0) + ", date: " + reminder.get(3) + ", content: \"" + reminder.get(2) + "\"").queue();
             }
         }
 
@@ -109,30 +115,36 @@ public class Reminder extends ListenerAdapter {
 
     }
 
-    private boolean deleteReminder(@Nonnull GuildMessageReceivedEvent event) {
-        String[] message = event.getMessage().getContentRaw().split(" ");
+    private void deleteReminder(@Nonnull GuildMessageReceivedEvent event, String id) {
         String authorID = event.getAuthor().getId();
+        boolean wasRemoved = false;
 
-        for(int i = 0, j = 1; i < Reminder.reminders.size(); i++) {
-            if (Reminder.reminders.get(i).get(0).equals(authorID)) {
-                if (message[1].equals(Integer.toString(j))) {
-                    event.getChannel().sendMessage("Reminder no. " + message[1] + " was deleted (content: \"" +
-                            Reminder.reminders.get(i).get(1) + "\", date: \"" + Reminder.reminders.get(i).get(2) + ").").queue();
-                    Reminder.reminders.remove(i);
-                    removeFromFile(event);
-                    return true;
-                }
-                j++;
+        for(int i = 0; i < reminders.size(); i++) {
+            if (reminders.get(i).get(0).equals(id) && reminders.get(i).get(1).equals(authorID)) {
+                event.getChannel().sendMessage("<@" + authorID + ">Reminder no. " + id + " was deleted (content: \"" +
+                        reminders.get(i).get(2) + "\", date: \"" + reminders.get(i).get(3) + ").").queue();
+                reminders.remove(i);
+                removeFromFile(event, id);
+                wasRemoved = true;
             }
         }
 
-        event.getChannel().sendMessage("There`s no reminder no. " + message[1] +  ".").queue();
-        return false;
+        if (!wasRemoved)
+            event.getChannel().sendMessage("There`s no reminder no. " + id +  ".").queue();
+    }
+
+    public static void deleteReminder(String id) {
+        for (int i = 0; i < reminders.size(); i++) {
+            if (reminders.get(i).get(0).equals(id)) {
+                reminders.remove(i);
+                removeFromFile(id);
+            }
+        }
     }
 
     private void saveToFile(GuildMessageReceivedEvent event, String[] splittedMessage) {
         try (FileWriter output = new FileWriter(container, true)) {
-            String outputReminder = event.getAuthor().getId() + ";" + splittedMessage[1] + ";" + splittedMessage[2] + "\n";
+            String outputReminder = messageId + ";" + event.getAuthor().getId() + ";" + splittedMessage[1] + ";" + splittedMessage[2] + "\n";
             output.append(outputReminder);
         }
         catch (IOException ex) {
@@ -140,36 +152,45 @@ public class Reminder extends ListenerAdapter {
         }
     }
 
-    private void removeFromFile(GuildMessageReceivedEvent event) {
-        String[] message = event.getMessage().getContentRaw().split(" ");
+    private void removeFromFile(GuildMessageReceivedEvent event, String id) {
         String authorID = event.getAuthor().getId();
 
-        try (BufferedReader input = new BufferedReader(new FileReader(container))){
-            String actualLine;
+        try {
+            List<String> fileLines = Files.readAllLines(container.toPath());
             String[] splittedMessage;
             StringBuffer buff = new StringBuffer();
 
-            for(int j = 0; (actualLine = input.readLine()) != null;) {
-                splittedMessage = actualLine.split(";");
-                if (splittedMessage[0].equals(authorID)) {
-                    j++;
-                    if (j == Integer.parseInt(message[1]))
-                        continue;
-                    else {
-                        buff = buff.append(actualLine + "\n");
-                    }
-                }
-                else {
-                    buff = buff.append(actualLine + "\n");
-                }
+            for(String el : fileLines) {
+                splittedMessage = el.split(";");
+                if (!splittedMessage[0].equals(id) || !splittedMessage[1].equals(authorID))
+                    buff = buff.append(el + "\n");
             }
 
             BufferedWriter output = new BufferedWriter(new FileWriter(container));
             output.write(buff.toString());
             output.close();
 
-        } catch (FileNotFoundException e) {
+        } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private static void removeFromFile(String id) {
+        try (BufferedReader input = new BufferedReader(new FileReader(container))){
+            String actualLine;
+            String[] splittedMessage;
+            StringBuffer buff = new StringBuffer();
+
+            while((actualLine = input.readLine()) != null) {
+                splittedMessage = actualLine.split(";");
+                if (!splittedMessage[0].equals(id))     //ID == id from command && message`s user id == user id
+                    buff = buff.append(actualLine + "\n");
+            }
+
+            BufferedWriter output = new BufferedWriter(new FileWriter(container));
+            output.write(buff.toString());
+            output.close();
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -178,20 +199,22 @@ public class Reminder extends ListenerAdapter {
     private void readFromFile() {
         String actualLine;
         String[] splittedReminder;
+        long actualId = 0;
+
         try (BufferedReader input = new BufferedReader(new FileReader(container))) {
             while ((actualLine = input.readLine()) != null) {
                 ArrayList<String> reminder = new ArrayList<>();
                 splittedReminder = actualLine.split(";");
+                actualId = Long.parseLong(splittedReminder[0]) + 1;
 
-                for(int i = 0; i < splittedReminder.length; i++) {
-                    reminder.add(splittedReminder[i]);
-                }
-
+                Collections.addAll(reminder, splittedReminder);
                 reminders.add(reminder);
             }
+
         }
         catch(IOException ex) {
             ex.printStackTrace();
         }
+        messageId = actualId;
     }
 }

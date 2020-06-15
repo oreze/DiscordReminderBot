@@ -9,6 +9,6 @@ public class PingPong extends ListenerAdapter{
         if (messageSent.equalsIgnoreCase("!ping"))
             event.getChannel().sendMessage("<@" + event.getAuthor().getId() + "> pong").queue();
         else if (messageSent.equalsIgnoreCase("!pong"))
-            event.getChannel().sendMessage("ping").queue();
+            event.getChannel().sendMessage("<@" + event.getAuthor().getId() + "> ping").queue();
     }
 }
